@@ -508,6 +508,9 @@ int main(void) {
 		do_usb_poll();
 		if (usbdfu_state == STATE_DFU_MANIFEST) {
 			// USB device must detach, we just reset...
+#ifdef USB_PULLUP_PORT
+			gpio_clear(USB_PULLUP_PORT, USB_PULLUP_PIN);
+#endif
 			clear_reboot_flags();
 			_full_system_reset();
 		}
