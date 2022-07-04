@@ -48,8 +48,8 @@ static char serial_no[25];
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
 const char * const _usb_strings[5] = {
-	"davidgf.net (libopencm3 based)", // iManufacturer
-	"DFU bootloader [" VERSION "]", // iProduct
+	DFU_USB_MFG_STRING, // iManufacturer
+	DFU_USB_PROD_STRING, // iProduct
 	serial_no, // iSerialNumber
 	// Interface desc string
 	/* This string is used by ST Microelectronics' DfuSe utility. */
@@ -172,6 +172,15 @@ static void usbdfu_getstatus_complete(struct usb_setup_data *req) {
 	}
 }
 
+// Implement this here to save space, quite minimalistic :D
+static void *_our_memcpy(void * dst, const void * src, size_t count) {
+	uint8_t * dstb = (uint8_t*)dst;
+	uint8_t * srcb = (uint8_t*)src;
+	while (count--)
+		*dstb++ = *srcb++;
+	return dst;
+}
+
 enum usbd_request_return_codes
 usbdfu_control_request(struct usb_setup_data *req,
 		uint16_t *len, void (**complete)(struct usb_setup_data *req)) {
@@ -188,7 +197,7 @@ usbdfu_control_request(struct usb_setup_data *req,
 			prog.len = *len;
 			if (prog.len > sizeof(prog.buf))
 				prog.len = sizeof(prog.buf);
-			memcpy(prog.buf, usbd_control_buffer, prog.len);
+			_our_memcpy(prog.buf, usbd_control_buffer, prog.len);
 			usbdfu_state = STATE_DFU_DNLOAD_SYNC;
 			return USBD_REQ_HANDLED;
 		}
@@ -225,7 +234,7 @@ usbdfu_control_request(struct usb_setup_data *req,
 			const uint32_t start_addr = 0x08000000 + (FLASH_BOOTLDR_SIZE_KB*1024);
 			const uint32_t end_addr   = 0x08000000 + (        FLASH_SIZE_KB*1024);
 			if (baseaddr >= start_addr && baseaddr + DFU_TRANSFER_SIZE <= end_addr) {
-				memcpy(usbd_control_buffer, (void*)baseaddr, DFU_TRANSFER_SIZE);
+				_our_memcpy(usbd_control_buffer, (void*)baseaddr, DFU_TRANSFER_SIZE);
 				*len = DFU_TRANSFER_SIZE;
 			} else {
 				usbdfu_state = STATE_DFU_ERROR;
@@ -292,12 +301,21 @@ inline static void gpio_set_mode(uint32_t gpiodev, uint16_t gpion, uint8_t mode)
 int force_dfu_gpio() {
 	rcc_gpio_enable(GPIO_DFU_BOOT_PORT);
 	gpio_set_input_pp(GPIO_DFU_BOOT_PORT, GPIO_DFU_BOOT_PIN);
+#ifdef GPIO_DFU_BOOT_PULLUP
+	gpio_set(GPIO_DFU_BOOT_PORT, GPIO_DFU_BOOT_PIN);
+#else
 	gpio_clear(GPIO_DFU_BOOT_PORT, GPIO_DFU_BOOT_PIN);
+#endif
 	for (unsigned int i = 0; i < 512; i++)
 		__asm__("nop");
 	uint16_t val = gpio_read(GPIO_DFU_BOOT_PORT, GPIO_DFU_BOOT_PIN);
 	gpio_set_input(GPIO_DFU_BOOT_PORT, GPIO_DFU_BOOT_PIN);
+
+#ifdef GPIO_DFU_BOOT_PULLUP
+	return val == 0;
+#else
 	return val != 0;
+#endif
 }
 #else
 #define force_dfu_gpio()  (0)
@@ -313,7 +331,15 @@ int force_dfu_gpio() {
 #define RCC_CFGR_ADCPRE_PCLK2_DIV8      0x3
 #define RCC_CFGR_PLLMUL_PLL_CLK_MUL9    0x7
 #define RCC_CFGR_PLLSRC_HSE_CLK         0x1
+
+#if HSE_SPEED_MHZ == 16
+#define RCC_CFGR_PLLXTPRE_HSE_CLK       0x1
+#elif HSE_SPEED_MHZ == 8
 #define RCC_CFGR_PLLXTPRE_HSE_CLK       0x0
+#else
+#error HSE_SPEED_MHZ is an unsupported speed.
+#endif			 
+
 #define RCC_CFGR_SW_SYSCLKSEL_PLLCLK    0x2
 #define RCC_CFGR_SW_SHIFT                 0
 #define RCC_CFGR_SW (3 << RCC_CFGR_SW_SHIFT)
@@ -453,6 +479,8 @@ int main(void) {
 
 	/* Disable USB peripheral as it overrides GPIO settings */
 	*USB_CNTR_REG = USB_CNTR_PWDN;
+
+#ifndef USB_PULLUP_PORT
 	/*
 	 * Vile hack to reenumerate, physically _drag_ d+ low.
 	 * (need at least 2.5us to trigger usb disconnect)
@@ -460,8 +488,17 @@ int main(void) {
 	rcc_gpio_enable(GPIOA);
 	gpio_set_output(GPIOA, 12);
 	gpio_clear(GPIOA, 12);
+#else
+	rcc_gpio_enable(USB_PULLUP_PORT);
+	gpio_set_output(USB_PULLUP_PORT, USB_PULLUP_PIN);
+	gpio_clear(USB_PULLUP_PORT, USB_PULLUP_PIN);
+#endif
+
 	for (unsigned int i = 0; i < 100000; i++)
 		__asm__("nop");
+#ifdef USB_PULLUP_PORT
+	gpio_set(USB_PULLUP_PORT, USB_PULLUP_PIN);
+#endif
 
 	get_dev_unique_id(serial_no);
 	usb_init();
@@ -476,14 +513,3 @@ int main(void) {
 		}
 	}
 }
-
-// Implement this here to save space, quite minimalistic :D
-void *memcpy(void * dst, const void * src, size_t count) {
-	uint8_t * dstb = (uint8_t*)dst;
-	uint8_t * srcb = (uint8_t*)src;
-	while (count--)
-		*dstb++ = *srcb++;
-	return dst;
-}
-
-

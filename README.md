@@ -7,6 +7,9 @@ works for similar devices). It enables user to flash devices over USB
 with any arbitrary payloads. It features some minimal payload checking
 to ensure use apps are valid before booting them.
 
+This version has been modified to accomodate our (RealSimGear Inc's) products 
+and the changes and new features are noted at the end.
+
 Features
 --------
 
@@ -93,3 +96,40 @@ Config flags
 
 By default all flags are set except for DFU upload, so it's most secure.
 
+RealSimGear Specific Changes
+============================
+
+Most of the changes have been made to allow us to work with our hardware without
+compromising the compatibility with upstream.
+
+Additional Makefile Flags
+-------------------------
+
+* `HSE_SPEED_MHZ` can be set to control the value of the HSE_SPEED_MHZ config 
+  flag.  If unset, it defaults to 8.
+
+* `OUTNAME` can be set to control the output file names.  We use this for bulk
+  building the variants of the bootloader for our various products.
+
+Additional Config Flags
+-----------------------
+
+* You can change the USB VID/PID and USB strings using:
+  `DFU_USB_VID` for the vendor ID, `DFU_USB_PID` for the product ID,
+  `DFU_USB_MFG_STRING` for the Manufacturer string, and
+  `DFU_USB_PROD_STRING` for the Product string.   We generally don't bother
+  overriding the product string, but we do set VID/PID/MFG_STRING to match
+  our standard.
+
+* You can set `GPIO_DFU_BOOT_PULLUP` to enable the pull-up and use the boot mode
+  switch as a low active switch, rather than a high active one.
+
+* You can set `USB_PULLUP_PORT` and `USB_PULLUP_PIN` to indicate where the D+
+  pullup is located.  Doing so disables the USB D+ GPIO hack to pull D+ low,
+  and instead uses the preferred signalling method of manipulating the pull-up 
+  itself instead, without disconnecting the USB Transceiver.
+
+* We've added the define `HSE_SPEED_MHZ` (as well as the makefile var) which 
+  specifies what the external crystal speed is in MHz.  Valid values are 8 (the
+  traditional default) and 16.  Using 16 enables the XTPRE predivider when
+  configuring the clocks to set up the PLL correctly.

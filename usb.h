@@ -2,6 +2,22 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#ifndef DFU_USB_VID
+#define DFU_USB_VID	0xdead
+#endif
+
+#ifndef DFU_USB_PID
+#define DFU_USB_PID 0xca5d
+#endif
+
+#ifndef DFU_USB_MFG_STRING
+#define DFU_USB_MFG_STRING "davidgf.net (libopencm3 based)"
+#endif
+
+#ifndef DFU_USB_PROD_STRING
+#define DFU_USB_PROD_STRING "DFU bootloader [" VERSION "]"
+#endif
+
 // Basic defs
 #define MMIO32(addr)       (*(volatile uint32_t *)(addr))
 #define PERIPH_BASE        (0x40000000U)
