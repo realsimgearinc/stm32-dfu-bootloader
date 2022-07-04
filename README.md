@@ -126,10 +126,23 @@ Additional Config Flags
 
 * You can set `USB_PULLUP_PORT` and `USB_PULLUP_PIN` to indicate where the D+
   pullup is located.  Doing so disables the USB D+ GPIO hack to pull D+ low,
-  and instead uses the preferred signalling method of manipulating the pull-up 
+  and instead uses the preferred signalling method of manipulating the pull-up
   itself instead, without disconnecting the USB Transceiver.
 
-* We've added the define `HSE_SPEED_MHZ` (as well as the makefile var) which 
+* We've added the define `HSE_SPEED_MHZ` (as well as the makefile var) which
   specifies what the external crystal speed is in MHz.  Valid values are 8 (the
   traditional default) and 16.  Using 16 enables the XTPRE predivider when
   configuring the clocks to set up the PLL correctly.
+
+A Note On USB IDs and Licensing
+-------------------------------
+
+Whilst the bootloader is provided here as per the requirements of the GNU Public
+License, that does not entail authorisation to use RSG USB VID/PIDs arbitrarily.
+
+The RealSimGear USB VID/PID can only be used on our Products.
+
+Please use the original defaults (which take effect if you do not override
+DFU_USB_VID, or DFU_USB_PID), or get an allocation from pid.codes if you
+want to use this variation of this bootloader in your own products.   Doing so
+does not hamper or otherwise impact the operation of the firmware.
