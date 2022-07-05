@@ -11,6 +11,7 @@ FLASH_SIZE ?= 512
 FLASH_BASE_ADDR = 0x08000000
 FLASH_PAGE_SIZE ?= 2048
 FLASH_BOOTLDR_PAYLOAD_SIZE_KB = $(shell echo $$(($(FLASH_SIZE) - $(BOOTLOADER_SIZE))))
+LINK_SCRIPT ?= stm32f103xd.ld
 HSE_SPEED_MHZ ?= 8
 
 # Default config
@@ -25,7 +26,7 @@ CFLAGS = -Os -ggdb -std=c11 -Wall -pedantic -Werror \
 	-pedantic -DVERSION=\"$(GIT_VERSION)\" -DHSE_SPEED_MHZ=$(HSE_SPEED_MHZ) -flto $(CONFIG)
 
 LDFLAGS = -ggdb -ffunction-sections -fdata-sections \
-	-Wl,-Tstm32f103.ld -nostartfiles -lc -lnosys \
+	-Wl,-T${LINK_SCRIPT} -nostartfiles -lc -lnosys \
 	-mthumb -mcpu=cortex-m3 -Wl,-gc-sections -flto \
 	-Wl,--print-memory-usage
 

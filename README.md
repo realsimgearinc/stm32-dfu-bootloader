@@ -111,6 +111,13 @@ Additional Makefile Flags
 * `OUTNAME` can be set to control the output file names.  We use this for bulk
   building the variants of the bootloader for our various products.
 
+* `LINK_SCRIPT` can be set to change the linker script used when building the
+  final firmware image.  This needs to have the correct RAM size configured
+  in it otherwise the bootloader will not verify the correct words of memory
+  for the bootloader magic word.  The original F103x8 configuration is
+  available as `stm32f103x8.ld`.  An alternate script for the xD and xE is
+  included (which is now the default used).
+
 Additional Config Flags
 -----------------------
 
