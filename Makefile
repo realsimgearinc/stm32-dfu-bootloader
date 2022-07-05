@@ -9,6 +9,7 @@ OUTNAME ?= bootloader-dfu-fw
 BOOTLOADER_SIZE = 4
 FLASH_SIZE ?= 512
 FLASH_BASE_ADDR = 0x08000000
+FLASH_PAGE_SIZE ?= 2048
 FLASH_BOOTLDR_PAYLOAD_SIZE_KB = $(shell echo $$(($(FLASH_SIZE) - $(BOOTLOADER_SIZE))))
 HSE_SPEED_MHZ ?= 8
 
@@ -45,6 +46,7 @@ flash_config.h:
 	echo "#define FLASH_SIZE_KB $(FLASH_SIZE)" >> flash_config.h
 	echo "#define FLASH_BOOTLDR_PAYLOAD_SIZE_KB $(FLASH_BOOTLDR_PAYLOAD_SIZE_KB)" >> flash_config.h
 	echo "#define FLASH_BOOTLDR_SIZE_KB $(BOOTLOADER_SIZE)" >> flash_config.h
+	echo "#define FLASH_PAGE_SIZE $(FLASH_PAGE_SIZE)" >> flash_config.h
 
 clean:
 	-rm -f $(OUTNAME).elf *.o $(OUTNAME).bin $(OUTNAME).map flash_config.h

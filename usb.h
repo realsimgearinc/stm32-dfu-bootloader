@@ -519,7 +519,7 @@ do {									\
 
 
 // Exported API
-#define DFU_TRANSFER_SIZE 1024
+#define DFU_TRANSFER_SIZE FLASH_PAGE_SIZE
 void usb_init();
 void do_usb_poll();
 

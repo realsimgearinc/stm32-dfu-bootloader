@@ -2,12 +2,12 @@
 // Stuff copied from libopencm3 and simplified/reworked
 // to make it simpler and fit 4KB
 
+#include "flash_config.h"
 #include <string.h>
-
 #include "usb.h"
 
 // Defined in main
-extern uint8_t usbd_control_buffer[1024];
+extern uint8_t usbd_control_buffer[DFU_TRANSFER_SIZE];
 extern const char * const _usb_strings[5];
 extern enum usbd_request_return_codes
 usbdfu_control_request(struct usb_setup_data *req,
@@ -75,7 +75,7 @@ const struct {
 			USB_DFU_WILL_DETACH,
 		.wDetachTimeout = 255,
 		.wTransferSize = DFU_TRANSFER_SIZE,
-		.bcdDFUVersion = 0x011A,
+		.bcdDFUVersion = 0x011a,
 	},
 };
 
