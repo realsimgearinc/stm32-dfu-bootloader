@@ -22,6 +22,7 @@
 #include "reboot.h"
 #include "flash.h"
 #include "watchdog.h"
+#include "barrier.h"
 
 /* Commands sent with wBlockNum == 0 as per ST implementation. */
 #define CMD_SETADDR	0x21
@@ -102,9 +103,11 @@ static uint8_t usbdfu_getstatus(uint32_t *bwPollTimeout) {
 
 static void _full_system_reset() {
 	// Reset and wait for it!
-	volatile uint32_t *_scb_aircr = (uint32_t*)0xE000ED0CU;
-	*_scb_aircr = 0x05FA0000 | 0x4;
-	while(1);
+	volatile uint32_t *_scb_aircr = (volatile uint32_t*)0xE000ED0CU;
+	*_scb_aircr = (*_scb_aircr & 0x700) | 0x05FA0000 | 0x4;
+	DSB();
+	while(1)
+		;
 	__builtin_unreachable();
 }
 
