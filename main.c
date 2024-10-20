@@ -497,7 +497,7 @@ int main(void) {
 	gpio_clear(USB_PULLUP_PORT, USB_PULLUP_PIN);
 #endif
 
-	for (unsigned int i = 0; i < 100000; i++)
+	for (unsigned int i = 0; i < 100000 * HSE_SPEED_MHZ / 8; i++)
 		__asm__("nop");
 #ifdef USB_PULLUP_PORT
 	gpio_set(USB_PULLUP_PORT, USB_PULLUP_PIN);
