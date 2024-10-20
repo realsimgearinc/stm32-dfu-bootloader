@@ -16,14 +16,25 @@ HSE_SPEED_MHZ ?= 8
 
 # Default config
 CONFIG ?= \
+	-DWINUSB_SUPPORT \
 	-DENABLE_GPIO_DFU_BOOT -DGPIO_DFU_BOOT_PORT=GPIOC -DGPIO_DFU_BOOT_PIN=13 -DGPIO_DFU_BOOT_PULLUP \
 	-DUSB_PULLUP_PORT=GPIOB -DUSB_PULLUP_PIN=8 \
-	-DENABLE_PROTECTIONS -DENABLE_CHECKSUM -DENABLE_SAFEWRITE -DENABLE_WATCHDOG=20
+	-DENABLE_WRITEPROT -DENABLE_CHECKSUM -DENABLE_SAFEWRITE -DENABLE_WATCHDOG=20
+# For GPIO DFU booting:  -DENABLE_GPIO_DFU_BOOT -DGPIO_DFU_BOOT_PORT=GPIOB -DGPIO_DFU_BOOT_PIN=2
+# To protect bootloader from accidental writes: -DENABLE_WRITEPROT
+# To protect your payload from DFU reads: -DENABLE_SAFEWRITE
+
+# Can be overriden with custom VID/PID
+USB_VID ?= 0xdead
+USB_PID ?= 0xca5d
 
 CFLAGS = -Os -ggdb -std=c11 -Wall -pedantic -Werror \
 	-ffunction-sections -fdata-sections -Wno-overlength-strings \
 	-mcpu=cortex-m3 -mthumb -DSTM32F1 -fno-builtin-memcpy  \
-	-pedantic -DVERSION=\"$(GIT_VERSION)\" -DHSE_SPEED_MHZ=$(HSE_SPEED_MHZ) -flto $(CONFIG)
+	-fno-builtin-strlen -pedantic -DVERSION=\"$(GIT_VERSION)\" \
+    -DUSB_PID=$(USB_PID) -DUSB_VID=$(USB_VID) \
+	-DHSE_SPEED_MHZ=$(HSE_SPEED_MHZ) \
+	-flto $(CONFIG)
 
 LDFLAGS = -ggdb -ffunction-sections -fdata-sections \
 	-Wl,-T${LINK_SCRIPT} -nostartfiles -lc -lnosys \

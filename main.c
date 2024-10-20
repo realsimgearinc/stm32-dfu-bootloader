@@ -18,6 +18,7 @@
 
 #include "flash_config.h"
 #include <string.h>
+#include <stdbool.h>
 #include "usb.h"
 #include "reboot.h"
 #include "flash.h"
@@ -28,7 +29,7 @@
 #define CMD_SETADDR	0x21
 #define CMD_ERASE	0x41
 
-// Payload/app comes inmediately after Bootloader
+// Payload/app comes immediately after Bootloader
 #define APP_ADDRESS (FLASH_BASE_ADDR + (FLASH_BOOTLDR_SIZE_KB)*1024)
 
 // USB control data buffer
@@ -55,7 +56,7 @@ const char * const _usb_strings[5] = {
 	// Interface desc string
 	/* This string is used by ST Microelectronics' DfuSe utility. */
 	/* Change check_do_erase() accordingly */
-	"@Internal Flash /0x08000000/"
+	"@Internal Flash /" STR(FLASH_BASE_ADDR) "/"
 	  STR(FLASH_BOOTLDR_SIZE_KB) "*001Ka,"
 	  STR(FLASH_BOOTLDR_PAYLOAD_SIZE_KB) "*001Kg",
 	// Config desc string
@@ -66,8 +67,11 @@ const char * const _usb_strings[5] = {
 	#ifdef ENABLE_SAFEWRITE
 	"SafeWr "
 	#endif
+	#ifdef ENABLE_WRITEPROT
+	"ROboot "
+	#endif
 	#ifdef ENABLE_PROTECTIONS
-	"RDO/DBG "
+	"RDO/DBG ROboot "
 	#endif
 	#ifdef ENABLE_CHECKSUM
 	"FW-CRC "
@@ -123,12 +127,12 @@ static void usbdfu_getstatus_complete(struct usb_setup_data *req) {
 	(void)req;
 
 	// Protect the flash by only writing to the valid flash area
-	const uint32_t start_addr = 0x08000000 + (FLASH_BOOTLDR_SIZE_KB*1024);
-	const uint32_t end_addr   = 0x08000000 + (        FLASH_SIZE_KB*1024);
+	const uint32_t start_addr = FLASH_BASE_ADDR + (FLASH_BOOTLDR_SIZE_KB*1024);
+	const uint32_t end_addr   = FLASH_BASE_ADDR + (        FLASH_SIZE_KB*1024);
 
 	switch (usbdfu_state) {
 	case STATE_DFU_DNBUSY:
-		_flash_unlock(0);
+		_flash_unlock();
 		if (prog.blocknum == 0) {
 			switch (prog.buf[0]) {
 			case CMD_ERASE: {
@@ -169,7 +173,15 @@ static void usbdfu_getstatus_complete(struct usb_setup_data *req) {
 		usbdfu_state = STATE_DFU_DNLOAD_IDLE;
 		return;
 	case STATE_DFU_MANIFEST:
-		return;  // Reset placed in main loop.
+#ifdef USB_PULLUP_PORT
+		// drop the pullup to make it easier to detect the USB reset (more
+		// likely for the pullup to stay down long enough to be detected)
+		gpio_clear(USB_PULLUP_PORT, USB_PULLUP_PIN);
+#endif
+		// Perform reset
+		clear_reboot_flags();
+		_full_system_reset();
+		return;
 	default:
 		return;
 	}
@@ -192,6 +204,7 @@ usbdfu_control_request(struct usb_setup_data *req,
 		if ((len == NULL) || (*len == 0)) {
 			// wLength = 0 means leave DFU
 			usbdfu_state = STATE_DFU_MANIFEST_SYNC;
+			*complete = usbdfu_getstatus_complete;
 			return USBD_REQ_HANDLED;
 		} else {
 			/* Copy download data for use on GET_STATUS. */
@@ -214,7 +227,8 @@ usbdfu_control_request(struct usb_setup_data *req,
 		usbdfu_state = STATE_DFU_IDLE;
 		return USBD_REQ_HANDLED;
 	case DFU_DETACH:
-		usbdfu_state = STATE_DFU_MANIFEST;
+		usbdfu_state = STATE_DFU_MANIFEST_SYNC;
+		*complete = usbdfu_getstatus_complete;
 		return USBD_REQ_HANDLED;
 	case DFU_UPLOAD:
 		// Send data back to host by reading the image.
@@ -234,8 +248,8 @@ usbdfu_control_request(struct usb_setup_data *req,
 			#else
 			// From formula Address_Pointer + ((wBlockNum - 2)*wTransferSize)
 			uint32_t baseaddr = prog.addr + ((req->wValue - 2) * DFU_TRANSFER_SIZE);
-			const uint32_t start_addr = 0x08000000 + (FLASH_BOOTLDR_SIZE_KB*1024);
-			const uint32_t end_addr   = 0x08000000 + (        FLASH_SIZE_KB*1024);
+			const uint32_t start_addr = FLASH_BASE_ADDR + (FLASH_BOOTLDR_SIZE_KB*1024);
+			const uint32_t end_addr   = FLASH_BASE_ADDR + (        FLASH_SIZE_KB*1024);
 			if (baseaddr >= start_addr && baseaddr + DFU_TRANSFER_SIZE <= end_addr) {
 				_our_memcpy(usbd_control_buffer, (void*)baseaddr, DFU_TRANSFER_SIZE);
 				*len = DFU_TRANSFER_SIZE;
@@ -247,7 +261,7 @@ usbdfu_control_request(struct usb_setup_data *req,
 		}
 		return USBD_REQ_HANDLED;
 	case DFU_GETSTATUS: {
-		// Perfom the action and register complete callback.
+		// Perform the action and register complete callback.
 		uint32_t bwPollTimeout = 0; /* 24-bit integer in DFU class spec */
 		usbd_control_buffer[0] = usbdfu_getstatus(&bwPollTimeout);
 		usbd_control_buffer[1] = bwPollTimeout & 0xFF;
@@ -260,7 +274,7 @@ usbdfu_control_request(struct usb_setup_data *req,
 		return USBD_REQ_HANDLED;
 		}
 	case DFU_GETSTATE:
-		// Return state with no state transision.
+		// Return state with no state transition.
 		usbd_control_buffer[0] = usbdfu_state;
 		*len = 1;
 		return USBD_REQ_HANDLED;
@@ -285,7 +299,7 @@ inline static void gpio_set_mode(uint32_t gpiodev, uint16_t gpion, uint8_t mode)
 	if (gpion < 8)
 		GPIO_CRL(gpiodev) = (GPIO_CRL(gpiodev) & ~(0xf << ((gpion)<<2))) | (mode << ((gpion)<<2));
 	else
-		GPIO_CRH(gpiodev) = (GPIO_CRL(gpiodev) & ~(0xf << ((gpion-8)<<2))) | (mode << ((gpion-8)<<2));
+		GPIO_CRH(gpiodev) = (GPIO_CRH(gpiodev) & ~(0xf << ((gpion-8)<<2))) | (mode << ((gpion-8)<<2));
 }
 
 #define gpio_set_output(a,b)    gpio_set_mode(a,b,0x2)
@@ -326,7 +340,12 @@ int force_dfu_gpio() {
 
 #define FLASH_ACR_LATENCY         7
 #define FLASH_ACR_LATENCY_2WS  0x02
-#define FLASH_ACR (*(volatile uint32_t*)0x40022000U)
+#define FLASH_ACR          (*(volatile uint32_t*)0x40022000U)
+#define FLASH_OBR          (*(volatile uint32_t*)0x4002201CU)
+#define FLASH_WRPR         (*(volatile uint32_t*)0x40022020U)
+#define FLASH_OPT_BYTES    ((volatile uint16_t*)0x1FFFF800U)
+#define WORD_RDP           0
+#define WORD_WRP0          4
 
 #define RCC_CFGR_HPRE_SYSCLK_NODIV      0x0
 #define RCC_CFGR_PPRE1_HCLK_DIV2        0x4
@@ -402,27 +421,60 @@ static void clock_setup_in_hse_8mhz_out_72mhz() {
     RCC_CFGR = (RCC_CFGR & ~RCC_CFGR_SW) | (RCC_CFGR_SW_SYSCLKSEL_PLLCLK << RCC_CFGR_SW_SHIFT);
 }
 
+bool validate_checksum(const uint32_t * const image, unsigned size) {
+	// Do some simple XOR checking
+	uint32_t xorv = 0xB4DC0FEE;
+	for (unsigned i = 0; i < size; i++)
+		xorv ^= image[i];
+
+	return xorv == 0;
+}
+
 int main(void) {
 	/* Boot the application if it seems valid and we haven't been
 	 * asked to reboot into DFU mode. This should make the CPU to
 	 * boot into DFU if the user app has been erased. */
 
-	#ifdef ENABLE_PROTECTIONS
-	// Check for RDP protection, and in case it's not enabled, do it!
-	volatile uint32_t *_flash_obr = (uint32_t*)0x4002201CU;
-	if (!((*_flash_obr) & 0x2)) {
-		// Read protection NOT enabled ->
+	#ifdef ENABLE_WRITEPROT
+	// On every boot we check the FLASH WPR bits and proceed to protect
+	// the bootloader if it's unprotected. This requires a reset.
+	// If the device was DFU-rebooted we skip this check, to allow for
+	// bootloader updates.
+	if (!rebooted_into_updater() && (FLASH_WRPR & 1)) {
+		// Make a copy of the opt bytes so that we only modify what we need to.
+		uint16_t opt[8];
+		memcpy(&opt[0], (uint16_t*)FLASH_OPT_BYTES, sizeof(opt));
 
-		// Unlock option bytes
-		_flash_unlock(1);
+		opt[WORD_WRP0] &= ~0x0001;    // Bit 0 write protects pages 0-3 (4KB)
+		opt[WORD_WRP0] |=  0x0100;
 
-		// Delete them all
+		_flash_unlock();
+		_optbytes_unlock();
 		_flash_erase_option_bytes();
 
-		// Now write a pair of bytes that are complentary [RDP, nRDP]
-		_flash_program_option_bytes(0x1FFFF800U, 0x33CC);
+		for (unsigned i = 0; i < 8; i++)
+			_flash_program_option_bytes((uint32_t)(&FLASH_OPT_BYTES[i]), opt[i]);
 
-		// Now reset, for RDP to take effect. We should not re-enter this path
+		_full_system_reset();
+	}
+	#endif
+
+	#ifdef ENABLE_PROTECTIONS
+	// Check for RDP protection, and in case it's not enabled, do it!
+	if (!(FLASH_OBR & 0x2)) {
+		// Read protection NOT enabled -> Enable it and reboot
+		uint16_t opt[8];
+		memcpy(&opt[0], (uint16_t*)FLASH_OPT_BYTES, sizeof(opt));
+		opt[WORD_RDP] = 0xFFFF;    // This means protected (L1) according to docs
+
+		// Unlock option bytes and wipe them
+		_flash_unlock();
+		_optbytes_unlock();
+		_flash_erase_option_bytes();
+
+		for (unsigned i = 0; i < 8; i++)
+			_flash_program_option_bytes((uint32_t)(&FLASH_OPT_BYTES[i]), opt[i]);
+
 		_full_system_reset();
 	}
 
@@ -431,10 +483,9 @@ int main(void) {
 	*_AFIO_MAPR = (*_AFIO_MAPR & ~(0x7 << 24)) | (0x4 << 24);
 	#endif
 
+	#ifdef ENABLE_CHECKSUM
 	const uint32_t start_addr = 0x08000000 + (FLASH_BOOTLDR_SIZE_KB*1024);
 	const uint32_t * const base_addr = (uint32_t*)start_addr;
-
-	#ifdef ENABLE_CHECKSUM
 	uint32_t imagesize = base_addr[0x20 / 4];
 	#else
 	uint32_t imagesize = 0;
@@ -455,12 +506,10 @@ int main(void) {
 	if (!go_dfu &&
 	   (*(volatile uint32_t *)APP_ADDRESS & 0x2FFE0000) == 0x20000000) {
 
-		// Do some simple XOR checking
-		uint32_t xorv = 0;
-		for (unsigned i = 0; i < imagesize; i++)
-			xorv ^= base_addr[i];
-
-		if (xorv == 0) {  // Matches!
+		#ifdef ENABLE_CHECKSUM
+		if (validate_checksum(base_addr, imagesize))
+		#endif
+		{
 			// Clear flags
 			clear_reboot_flags();
 			#ifdef ENABLE_WATCHDOG
@@ -486,7 +535,7 @@ int main(void) {
 #ifndef USB_PULLUP_PORT
 	/*
 	 * Vile hack to reenumerate, physically _drag_ d+ low.
-	 * (need at least 2.5us to trigger usb disconnect)
+	 * (need at least 2.5us to trigger USB disconnect)
 	 */
 	rcc_gpio_enable(GPIOA);
 	gpio_set_output(GPIOA, 12);
@@ -509,13 +558,23 @@ int main(void) {
 	while (1) {
 		// Poll based approach
 		do_usb_poll();
-		if (usbdfu_state == STATE_DFU_MANIFEST) {
-			// USB device must detach, we just reset...
-#ifdef USB_PULLUP_PORT
-			gpio_clear(USB_PULLUP_PORT, USB_PULLUP_PIN);
-#endif
-			clear_reboot_flags();
-			_full_system_reset();
-		}
 	}
+	__builtin_unreachable();
 }
+
+// Implement this here to save space, quite minimalistic :D
+__attribute__((used))
+void *memcpy(void * dst, const void * src, size_t count) {
+	uint8_t * dstb = (uint8_t*)dst;
+	uint8_t * srcb = (uint8_t*)src;
+	while (count--)
+		*dstb++ = *srcb++;
+	return dst;
+}
+
+// Config checks
+
+#if defined(ENABLE_WRITEPROT) && defined(ENABLE_PROTECTIONS)
+  #error "ENABLE_PROTECTIONS already includes the same protections as ENABLE_WRITEPROT, do not specify both!"
+#endif
+

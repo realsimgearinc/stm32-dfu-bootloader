@@ -5,46 +5,46 @@
 
 // Flashing routines //
 
-#define FLASH_CR_LOCK  (1 << 7)
-#define FLASH_CR_STRT  (1 << 6)
-#define FLASH_CR_OPTER (1 << 5)
-#define FLASH_CR_OPTPG (1 << 4)
-#define FLASH_CR_PER   (1 << 1)
-#define FLASH_CR_PG   (1 << 0)
-#define FLASH_SR_BSY   (1 << 0)
+#define FLASH_CR_OPTWRE (1 << 9)
+#define FLASH_CR_LOCK   (1 << 7)
+#define FLASH_CR_STRT   (1 << 6)
+#define FLASH_CR_OPTER  (1 << 5)
+#define FLASH_CR_OPTPG  (1 << 4)
+#define FLASH_CR_PER    (1 << 1)
+#define FLASH_CR_PG     (1 << 0)
+#define FLASH_SR_BSY    (1 << 0)
+#define FLASH_SR_PGERR  (1 << 2)
+#define FLASH_SR_WPERR  (1 << 4)
 #define FLASH_KEYR    (*(volatile uint32_t*)0x40022004U)
 #define FLASH_OPTKEYR (*(volatile uint32_t*)0x40022008U)
 #define FLASH_SR      (*(volatile uint32_t*)0x4002200CU)
 #define FLASH_CR      (*(volatile uint32_t*)0x40022010U)
 #define FLASH_AR      (*(volatile uint32_t*)0x40022014U)
 
-static void _flash_unlock(int opt) {
-	// Clear the unlock state.
-
-	// HACK:  GD32s seem to exception if you try to lock FLASH_CR whilst it's
-	//        locked, so check to see if it's locked, and if it's not, lock it.
-	if (!(FLASH_CR & FLASH_CR_LOCK)) {
-		FLASH_CR |= FLASH_CR_LOCK;
-	}
-	DMB();
-	// Authorize the FPEC access.
-	FLASH_KEYR = 0x45670123U;	
-	FLASH_KEYR = 0xcdef89abU;
-	if (opt) {
-		// F1 uses same keys for flash and option
-		FLASH_OPTKEYR = 0x45670123U;
-		FLASH_OPTKEYR = 0xcdef89abU;
-	}
-	DMB();
-}
-
 static void _flash_lock() {
+	// Clear the unlock state.
+	DMB();
 	FLASH_CR |= FLASH_CR_LOCK;
 	DMB();
 }
 
+
+static void _flash_unlock() {
+	// Only if locked!
+	if (FLASH_CR & FLASH_CR_LOCK) {
+		DMB();
+		// Authorize the FPEC access.
+		FLASH_KEYR = 0x45670123U;
+		FLASH_KEYR = 0xcdef89abU;
+		DMB();
+	}
+}
+
 #define _flash_wait_for_last_operation() \
-	while (FLASH_SR & FLASH_SR_BSY);
+	/* 1 cycle wait, see STM32 errata */ \
+	do {                                 \
+		__asm__ volatile("nop");         \
+	} while (FLASH_SR & FLASH_SR_BSY);
 
 static void _flash_erase_page(uint32_t page_address) {
 	_flash_wait_for_last_operation();
@@ -86,7 +86,7 @@ static void _flash_program_buffer(uint32_t address, uint16_t *data, unsigned len
 	DMB();
 }
 
-#ifdef ENABLE_PROTECTIONS
+#if defined(ENABLE_PROTECTIONS) || defined(ENABLE_WRITEPROT)
 static void _flash_erase_option_bytes() {
 	_flash_wait_for_last_operation();
 
@@ -113,6 +113,14 @@ static void _flash_program_option_bytes(uint32_t address, uint16_t data) {
 	FLASH_CR &= ~FLASH_CR_OPTPG;  // Disable option byte programming.
 	DMB();
 }
+
+static void _optbytes_unlock() {
+	if (!(FLASH_CR & FLASH_CR_OPTWRE)) {
+		// F1 uses same keys for flash and option
+		FLASH_OPTKEYR = 0x45670123U;
+		FLASH_OPTKEYR = 0xcdef89abU;
+	}
+}
 #endif
 
 #ifdef ENABLE_SAFEWRITE
@@ -126,8 +134,8 @@ static void check_do_erase() {
 	if (erased) return;
 
 	/* Change usb_strings accordingly */
-	const uint32_t start_addr = 0x08000000 + (FLASH_BOOTLDR_SIZE_KB*1024);
-	const uint32_t end_addr   = 0x08000000 + (        FLASH_SIZE_KB*1024);
+	const uint32_t start_addr = FLASH_BASE_ADDR + (FLASH_BOOTLDR_SIZE_KB*1024);
+	const uint32_t end_addr   = FLASH_BASE_ADDR + (        FLASH_SIZE_KB*1024);
 	for (uint32_t addr = start_addr; addr < end_addr; addr += FLASH_PAGE_SIZE)
 		if (!_flash_page_is_erased(addr))
 			_flash_erase_page(addr);

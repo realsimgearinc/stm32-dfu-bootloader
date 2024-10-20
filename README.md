@@ -41,7 +41,7 @@ prevent any debuggers from attaching to the device once booted.
 The booloader also features some DFU proectections. It is possible to
 disable firmware read by disabling UPLOAD commands. In order to prevent
 data read it is possible to prevent partial writes, since what could allow
-a small firmware being uploaded to extract data fromt flash. With this
+a small firmware being uploaded to extract data from flash. With this
 protection enabled the bootloader will wipe all the blocks as soon as
 an erase/write command is issued.
 
@@ -52,9 +52,9 @@ The bootloader can be configured to detect a GPIO condition on boot and
 abort boot to go into DFU mode. The pin will be configured as an internal
 pulldown and the user will need to pull it up to force DFU mode, which
 will be read right after reset (there's some small delay to ensure the
-pin is read correclty).
+pin is read correctly).
 
-The firmware can optionally enable the Interal Watchdog on a configurable
+The firmware can optionally enable the Internal Watchdog on a configurable
 period of 1 to 26 seconds. If the user app does not reset the watchdog
 before the period is due it will reset the system and enter DFU mode.
 
@@ -83,10 +83,14 @@ Config flags
   that could lead to user data exfiltration.
 * ENABLE_CHECKSUM: Forces the user app image to have a valid checksum to
   boot it, on failure it will fallback to DFU mode.
+* ENABLE_WRITEPROT: Protects the first 4KB of flash against writes.
+  Essentially prevents any user app from overwriting the bootloader area.
 * ENABLE_PROTECTIONS: Disables JTAG at startup before jumping to user code
   and also ensures RDP protection is enabled before booting. It will update
   option bytes if that is not met and force a reset (should only happen the
   first time, after that RDP is enabled and can only be disabled via JTAG).
+  This also protects the bootloader (first 4KB) like ENABLE_WRITEPROT does,
+  making these two options incompatible.
 * ENABLE_GPIO_DFU_BOOT: Enables DFU mode on pulling up a certain GPIO.
   You need to define GPIO_DFU_BOOT_PORT and GPIO_DFU_BOOT_PIN to either
   GPIOA, GPIOB, .. GPIOE and 0 .. 15 to indicate which port to enable and
