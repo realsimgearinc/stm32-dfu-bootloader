@@ -13,6 +13,8 @@ FLASH_PAGE_SIZE ?= 2048
 FLASH_BOOTLDR_PAYLOAD_SIZE_KB = $(shell echo $$(($(FLASH_SIZE) - $(BOOTLOADER_SIZE))))
 LINK_SCRIPT ?= stm32f103xd.ld
 HSE_SPEED_MHZ ?= 8
+USB_VID ?= 0xdead
+USB_PID ?= 0xca5d
 
 # Default config
 CONFIG ?= \
@@ -23,6 +25,7 @@ CONFIG ?= \
 CFLAGS = -Os -ggdb -std=c11 -Wall -pedantic -Werror \
 	-ffunction-sections -fdata-sections -Wno-overlength-strings \
 	-mcpu=cortex-m3 -mthumb -DSTM32F1 -fno-builtin-memcpy  \
+	-DDFU_USB_VID=${USB_VID} -DDFU_USB_PID=${USB_PID} \
 	-pedantic -DVERSION=\"$(GIT_VERSION)\" -DHSE_SPEED_MHZ=$(HSE_SPEED_MHZ) -flto $(CONFIG)
 
 LDFLAGS = -ggdb -ffunction-sections -fdata-sections \
